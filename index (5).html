@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Math Slime</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 8px;
+    }
+
+    /* ─── Header ─── */
+    header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      color: #eee;
+    }
+    header h1 {
+      font-size: 1.7rem;
+      color: #7fff00;
+      text-shadow: 0 0 12px #7fff0080;
+      letter-spacing: 2px;
+    }
+    #hud {
+      display: flex;
+      gap: 18px;
+      font-size: 1rem;
+      align-items: center;
+    }
+    #hud span { color: #ccc; }
+    #hud strong { color: #fff; }
+
+    /* ─── User bar ─── */
+    #user-bar {
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 12px;
+      color: #ccc;
+      font-size: 0.9rem;
+    }
+    #user-avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: #4ade80; border: 2px solid #333;
+      object-fit: cover;
+    }
+    #user-name { color: #eee; font-weight: bold; }
+    #sign-out-link {
+      margin-left: auto; color: #888; cursor: pointer;
+      text-decoration: underline; font-size: 0.8rem;
+    }
+    #sign-out-link:hover { color: #ccc; }
+
+    /* ─── Game area ─── */
+    #game-area {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      height: 520px;
+      background: #16213e;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 2px solid #0f3460;
+      box-shadow: 0 0 40px #0f346060;
+    }
+    canvas { display: block; }
+
+    /* ─── Answer bar ─── */
+    #answer-bar {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 800px;
+      min-height: 56px;
+    }
+
+    .ans-btn {
+      padding: 14px 24px;
+      font-size: 1.25rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      background: #0f3460;
+      color: #eee;
+      border: 2px solid #1a4a80;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+      min-width: 72px;
+      min-height: 52px;
+    }
+    .ans-btn:hover:not(:disabled) {
+      background: #1a5296;
+      box-shadow: 0 0 14px #1a529660;
+      transform: scale(1.06);
+    }
+    .ans-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+      transform: none !important;
+    }
+    .ans-btn.correct {
+      background: #2ecc40;
+      border-color: #27ae35;
+      box-shadow: 0 0 18px #2ecc4080;
+    }
+    .ans-btn.wrong {
+      background: #e74c3c;
+      border-color: #c0392b;
+      animation: shake 0.3s;
+    }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      75% { transform: translateX(6px); }
+    }
+
+    /* ─── Overlay ─── */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #000000cc;
+      border-radius: 14px;
+      z-index: 10;
+      color: #eee;
+      text-align: center;
+      gap: 14px;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .overlay h2 {
+      font-size: 2.4rem;
+      color: #7fff00;
+      text-shadow: 0 0 16px #7fff0080;
+    }
+    .overlay p { font-size: 1.15rem; color: #ccc; }
+    .overlay .big { font-size: 1.9rem; color: #fff; font-weight: bold; }
+
+    /* ─── Buttons ─── */
+    .btn {
+      padding: 14px 40px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.15s;
+    }
+    .btn:hover { transform: scale(1.06); }
+    .btn:active { transform: scale(0.97); }
+    .btn-green {
+      background: #7fff00;
+      color: #1a1a2e;
+      box-shadow: 0 0 20px #7fff0060;
+    }
+    .btn-green:hover { box-shadow: 0 0 30px #7fff00a0; }
+    .btn-google {
+      background: #fff; color: #333; border: 2px solid #ddd;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px; font-size: 1rem;
+    }
+    .btn-google:hover { border-color: #4285f4; }
+    .btn-google svg { width: 20px; height: 20px; }
+    .link-btn {
+      background: none; border: none; color: #aaa;
+      font-size: 0.95rem; cursor: pointer;
+      text-decoration: underline;
+    }
+    .link-btn:hover { color: #fff; }
+    .icon-btn {
+      background: none; border: none; font-size: 1.4rem;
+      cursor: pointer; padding: 4px;
+    }
+
+    /* ─── Level grid ─── */
+    .level-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      width: 100%;
+      max-width: 360px;
+      margin: 8px auto;
+    }
+    .level-circle {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem; font-weight: bold;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: transform 0.15s;
+      justify-self: center;
+      position: relative;
+    }
+    .level-circle:hover { transform: scale(1.1); }
+    .level-circle.unlocked {
+      background: #0f3460; color: #eee; border-color: #1a4a80;
+    }
+    .level-circle.current {
+      border-color: #7fff00;
+      box-shadow: 0 0 12px #7fff0060;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .level-circle.locked {
+      background: #333; color: #666; cursor: default;
+    }
+    .level-circle.locked::after {
+      content: '🔒'; position: absolute;
+      font-size: 0.55rem; bottom: -2px; right: -4px;
+    }
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 8px #7fff0040; }
+      50% { box-shadow: 0 0 20px #7fff0090; }
+    }
+
+    /* ─── Leaderboard ─── */
+    .lb-tabs {
+      display: flex; width: 100%; border-radius: 10px;
+      overflow: hidden; margin-bottom: 10px;
+    }
+    .lb-tab {
+      flex: 1; padding: 8px 4px; border: none;
+      font-size: 0.85rem; cursor: pointer;
+      background: #222; color: #888;
+      transition: background 0.15s;
+    }
+    .lb-tab.active { background: #0f3460; color: #fff; }
+    .lb-table { width: 100%; max-height: 260px; overflow-y: auto; }
+    .lb-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 8px; border-radius: 6px; font-size: 0.88rem;
+    }
+    .lb-row:nth-child(odd) { background: #ffffff08; }
+    .lb-row.me { background: #7fff0018; border: 1px solid #7fff0030; }
+    .lb-rank { width: 28px; text-align: center; font-weight: bold; }
+    .lb-avatar { width: 22px; height: 22px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
+    .lb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-stat { color: #7fff00; font-weight: bold; }
+    .lb-empty { color: #666; font-style: italic; padding: 16px; }
+    .lb-level-select {
+      background: #1a1a2e; color: #eee; border: 1px solid #444;
+      border-radius: 6px; padding: 4px 8px; margin-bottom: 8px;
+    }
+
+    /* ─── Level badge ─── */
+    #level-badge {
+      position: absolute;
+      top: 10px; left: 50%; transform: translateX(-50%);
+      background: #ffffff18;
+      color: #7fff00;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    @media (max-width: 500px) {
+      #game-area { height: 360px; }
+      .ans-btn { padding: 12px 16px; font-size: 1.1rem; min-width: 58px; }
+      .level-grid { max-width: 300px; }
+      .level-circle { width: 40px; height: 40px; font-size: 0.95rem; }
+      header h1 { font-size: 1.3rem; }
+      #hud { gap: 10px; font-size: 0.85rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div id="user-bar" style="display:none">
+    <img id="user-avatar" src="" alt="">
+    <span id="user-name"></span>
+    <span id="sign-out-link">Sign Out</span>
+  </div>
+
+  <header>
+    <h1>🧫 Math Slime</h1>
+    <div id="hud">
+      <span>Score: <strong id="score-val">0</strong></span>
+      <span>Lives: <strong id="lives-val">❤️❤️❤️</strong></span>
+      <span>Level: <strong id="level-val">1</strong></span>
+      <span><button class="icon-btn" id="mute-btn" title="Toggle sound">🔇</button></span>
+    </div>
+  </header>
+
+  <div id="game-area">
+    <canvas id="canvas" width="800" height="520"></canvas>
+    <div id="level-badge" style="display:none">LEVEL <span id="level-badge-val">1</span></div>
+  </div>
+
+  <div id="answer-bar"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// FIREBASE
+// ════════════════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyAAb4put1XeblHnBOFlzNB9APMdeKZJ2Ns",
+  authDomain: "mathslime-1ce35.firebaseapp.com",
+  projectId: "mathslime-1ce35",
+  storageBucket: "mathslime-1ce35.firebasestorage.app",
+  messagingSenderId: "1058249102516",
+  appId: "1:1058249102516:web:65c7070eec7f6fe1c033e1"
+};
+firebase.initializeApp(firebaseConfig);
+const authService = firebase.auth();
+const db = firebase.firestore();
+
+// ════════════════════════════════════════════════════════════════
+// CANVAS
+// ════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// ════════════════════════════════════════════════════════════════
+// LEVEL DEFINITIONS
+// ════════════════════════════════════════════════════════════════
+const LEVELS = [
+  null,
+  { name: 'Baby Steps',         newOp: '+', range: [1,9],  speed: 12, problems: 5,  choices: 3 },
+  { name: 'Take Away',          newOp: '-', range: [1,9],  speed: 12, problems: 8,  choices: 3 },
+  { name: 'Double Digits',      newOp: '+', range: [0,20], speed: 10, problems: 8,  choices: 4 },
+  { name: 'Subtract & Stretch', newOp: '-', range: [0,20], speed: 10, problems: 10, choices: 4 },
+  { name: 'First Times',        newOp: '×', range: [0,5],  speed: 8,  problems: 10, choices: 5 },
+  { name: 'Fair Shares',        newOp: '÷', range: [2,5],  speed: 8,  problems: 10, choices: 5 },
+];
+const MAX_LEVEL = LEVELS.length - 1;
+
+function getOpsForLevel(lvl) {
+  const ops = new Set();
+  for (let i = 1; i <= Math.min(lvl, MAX_LEVEL); i++) ops.add(LEVELS[i].newOp);
+  return [...ops];
+}
+
+// ════════════════════════════════════════════════════════════════
+// PROBLEM GENERATOR
+// ════════════════════════════════════════════════════════════════
+function genQuestion(lvl) {
+  const cl = Math.min(lvl, MAX_LEVEL);
+  const def = LEVELS[cl];
+  const allOps = getOpsForLevel(cl);
+
+  let op;
+  if (allOps.length <= 1 || Math.random() < 0.5) {
+    op = def.newOp;
+  } else {
+    const review = allOps.filter(o => o !== def.newOp);
+    op = review[Math.floor(Math.random() * review.length)];
+  }
+
+  let a, b, answer;
+  if (op === '+') {
+    const hi = cl <= 2 ? 9 : 20;
+    a = rand(1, hi); b = rand(1, hi); answer = a + b;
+  } else if (op === '-') {
+    const hi = cl <= 2 ? 9 : 20;
+    a = rand(1, hi); b = rand(0, a); answer = a - b;
+  } else if (op === '×') {
+    a = rand(0, 5); b = rand(0, 5); answer = a * b;
+  } else {
+    b = rand(2, 5);
+    const result = rand(1, 10);
+    a = b * result; answer = result;
+  }
+
+  return { text: `${a} ${op} ${b}`, answer, numChoices: def.choices };
+}
+
+function buildChoices(correct, count) {
+  const set = new Set([correct]);
+  // ±1
+  const d1 = correct + (Math.random() < 0.5 ? 1 : -1);
+  if (d1 >= 0) set.add(d1); else set.add(correct + 1);
+  // ±2..3
+  let tries = 0;
+  while (set.size < Math.min(3, count) && tries < 30) {
+    const d = correct + rand(-3, 3);
+    if (d >= 0 && d !== correct) set.add(d);
+    tries++;
+  }
+  // ±4..6 for larger sets
+  tries = 0;
+  while (set.size < count && tries < 40) {
+    const d = correct + rand(-6, 6);
+    if (d >= 0 && d !== correct) set.add(d);
+    tries++;
+  }
+  // fallback
+  let fb = 1;
+  while (set.size < count) { set.add(correct + set.size + fb); fb++; }
+  return shuffle([...set].slice(0, count));
+}
+
+// ════════════════════════════════════════════════════════════════
+// GAME STATE
+// ════════════════════════════════════════════════════════════════
+let score, lives, level, slimes, currentQ, gameRunning, animId;
+let lastSpawn, spawnInterval, slimeSpeed;
+let combo = 0, problemsSolved = 0, problemsTotal = 0;
+let popParticles = [], floatTexts = [];
+let levelStartTime = 0;
+let answering = false; // ← ANSWER LOCK — prevents rapid-tap exploit
+
+let currentUser = null;
+let unlockedLevels = 1;
+let muted = true;
+
+const COLORS = [
+  { body:'#4ade80', eye:'#166534', shade:'#16a34a' },
+  { body:'#60a5fa', eye:'#1e3a5f', shade:'#2563eb' },
+  { body:'#f472b6', eye:'#831843', shade:'#db2777' },
+  { body:'#fb923c', eye:'#7c2d12', shade:'#ea580c' },
+  { body:'#a78bfa', eye:'#3b0764', shade:'#7c3aed' },
+  { body:'#34d399', eye:'#064e3b', shade:'#059669' },
+];
+
+// ════════════════════════════════════════════════════════════════
+// PERSISTENCE
+// ════════════════════════════════════════════════════════════════
+function loadLocal() {
+  try {
+    const v = localStorage.getItem('mathslime_unlocked');
+    if (v) unlockedLevels = Math.max(unlockedLevels, parseInt(v));
+  } catch(e) {}
+}
+function saveLocal() {
+  try { localStorage.setItem('mathslime_unlocked', unlockedLevels); } catch(e) {}
+}
+async function syncFromFirestore(uid) {
+  try {
+    const doc = await db.collection('users').doc(uid).get();
+    if (doc.exists && doc.data().unlockedLevels) {
+      unlockedLevels = Math.max(unlockedLevels, doc.data().unlockedLevels);
+      saveLocal();
+    }
+  } catch(e) {}
+}
+async function saveToFirestore() {
+  if (!currentUser) return;
+  try {
+    await db.collection('users').doc(currentUser.uid).set({
+      displayName: currentUser.displayName || 'Slime Hero',
+      photoURL: currentUser.photoURL || '',
+      unlockedLevels,
+    }, { merge: true });
+  } catch(e) {}
+}
+async function saveLevelScore(lvl, sc, time) {
+  if (!currentUser) return;
+  try {
+    const ref = db.collection('users').doc(currentUser.uid).collection('levels').doc('level_' + lvl);
+    const doc = await ref.get();
+    const prev = doc.exists ? doc.data() : {};
+    await ref.set({
+      bestScore: Math.max(sc, prev.bestScore || 0),
+      bestTime: prev.bestTime ? Math.min(time, prev.bestTime) : time,
+      timesCompleted: (prev.timesCompleted || 0) + 1,
+      lastPlayed: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch(e) {}
+}
+async function submitLeaderboard(lvl, sc, time) {
+  if (!currentUser) return;
+  try {
+    await db.collection('leaderboard').add({
+      uid: currentUser.uid,
+      displayName: currentUser.displayName || 'Slime Hero',
+      photoURL: currentUser.photoURL || '',
+      level: lvl, score: sc, time: Math.round(time),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      type: 'level_clear',
+    });
+  } catch(e) {}
+}
+
+// ════════════════════════════════════════════════════════════════
+// AUTH
+// ════════════════════════════════════════════════════════════════
+function updateUserUI() {
+  const bar = document.getElementById('user-bar');
+  if (currentUser) {
+    bar.style.display = 'flex';
+    if (currentUser.photoURL) document.getElementById('user-avatar').src = currentUser.photoURL;
+    const name = (currentUser.displayName || 'Slime Hero').split(' ')[0];
+    document.getElementById('user-name').textContent = 'Hi, ' + name + '!';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+document.getElementById('sign-out-link').onclick = async () => {
+  await authService.signOut();
+  currentUser = null;
+  updateUserUI();
+  showTitleScreen();
+};
+authService.onAuthStateChanged(async (user) => {
+  if (user) {
+    currentUser = { uid: user.uid, displayName: user.displayName, photoURL: user.photoURL };
+    await syncFromFirestore(user.uid);
+    updateUserUI();
+  }
+  if (!gameRunning) showTitleScreen();
+});
+async function signInGoogle() {
+  try { await authService.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+  catch(e) { console.log('Sign-in failed', e); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// AUDIO
+// ════════════════════════════════════════════════════════════════
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playTone(freq, dur, type='sine', vol=0.15) {
+  if (muted) return;
+  try {
+    const a = getAudio(), osc = a.createOscillator(), g = a.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    g.gain.setValueAtTime(vol, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
+    osc.connect(g); g.connect(a.destination);
+    osc.start(); osc.stop(a.currentTime + dur);
+  } catch(e) {}
+}
+function sfxPop() { playTone(800, 0.15, 'sine', 0.2); setTimeout(() => playTone(1200, 0.1), 60); }
+function sfxWrong() { playTone(200, 0.25, 'triangle', 0.15); }
+function sfxLoseHeart() { playTone(400, 0.15); setTimeout(() => playTone(300, 0.15), 100); setTimeout(() => playTone(200, 0.3), 200); }
+function sfxLevelUp() { playTone(523, 0.15); setTimeout(() => playTone(659, 0.15), 120); setTimeout(() => playTone(784, 0.25), 240); }
+
+document.getElementById('mute-btn').onclick = () => {
+  muted = !muted;
+  document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
+  if (!muted) getAudio();
+};
+
+// ════════════════════════════════════════════════════════════════
+// SLIME CLASS
+// ════════════════════════════════════════════════════════════════
+class Slime {
+  constructor(question) {
+    this.q = question;
+    this.x = rand(60, W - 60);
+    this.y = -60;
+    this.r = 36;
+    this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    this.vy = slimeSpeed * (0.8 + Math.random() * 0.4);
+    this.vx = (Math.random() - 0.5) * 0.8;
+    this.wobble = Math.random() * Math.PI * 2;
+    this.wobbleDir = 1;
+    this.alpha = 1;
+    this.popping = false;
+    this.popScale = 1;
+    this.alive = true;
+  }
+  update(dt) {
+    if (this.popping) {
+      this.popScale += dt * 4;
+      this.alpha -= dt * 5;
+      if (this.alpha <= 0) this.alive = false;
+      return;
+    }
+    this.y += this.vy * dt * 60;
+    this.x += this.vx * dt * 60;
+    this.wobble += this.wobbleDir * dt * 3;
+    if (Math.abs(this.wobble) > 0.15) this.wobbleDir *= -1;
+    if (this.x < this.r) { this.x = this.r; this.vx *= -1; }
+    if (this.x > W - this.r) { this.x = W - this.r; this.vx *= -1; }
+    if (this.y > H + this.r) this.alive = false;
+  }
+  isEscaped() { return !this.popping && this.y > H + this.r; }
+  pop() { this.popping = true; spawnParticles(this.x, this.y, this.color.body); }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, this.alpha);
+    ctx.translate(this.x, this.y);
+    if (this.popping) ctx.scale(this.popScale, this.popScale);
+    const sx = 1 + Math.sin(this.wobble) * 0.12;
+    const sy = 1 - Math.sin(this.wobble) * 0.08;
+    ctx.scale(sx, sy);
+    // shadow
+    ctx.beginPath();
+    ctx.ellipse(4, this.r * 0.7, this.r * 0.9, this.r * 0.3, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#00000040'; ctx.fill();
+    // body
+    ctx.beginPath(); ctx.arc(0, 0, this.r, 0, Math.PI * 2);
+    ctx.fillStyle = this.color.body; ctx.fill();
+    // shade
+    ctx.beginPath(); ctx.arc(-4, -4, this.r * 0.7, 0, Math.PI * 2);
+    ctx.fillStyle = this.color.shade + '50'; ctx.fill();
+    // shine
+    ctx.beginPath();
+    ctx.ellipse(-this.r * 0.3, -this.r * 0.35, this.r * 0.22, this.r * 0.13, -0.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff70'; ctx.fill();
+    // eyes
+    for (const ex of [-10, 10]) {
+      ctx.beginPath(); ctx.arc(ex, -8, 5, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.beginPath(); ctx.arc(ex + 1.5, -7, 3, 0, Math.PI * 2); ctx.fillStyle = this.color.eye; ctx.fill();
+    }
+    // smile
+    ctx.beginPath(); ctx.arc(0, 4, 10, 0.2, Math.PI - 0.2);
+    ctx.strokeStyle = this.color.eye; ctx.lineWidth = 2; ctx.stroke();
+    // question text
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px Segoe UI, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+    ctx.fillText(this.q.text, 0, this.r + 18);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// PARTICLES & FLOAT TEXT
+// ════════════════════════════════════════════════════════════════
+function spawnParticles(x, y, color) {
+  const cols = [color, '#FFD700', '#FF6B6B', '#60a5fa', '#4ade80', '#a78bfa'];
+  for (let i = 0; i < 14; i++) {
+    const angle = Math.random() * Math.PI * 2, speed = 2 + Math.random() * 4;
+    popParticles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed-1,
+      r: 3+Math.random()*5, color: cols[rand(0,cols.length-1)], alpha: 1, life: 0.5+Math.random()*0.4 });
+  }
+}
+function updateParticles(dt) {
+  popParticles = popParticles.filter(p => {
+    p.x += p.vx*dt*60; p.y += p.vy*dt*60; p.vy += 0.15; p.alpha -= dt/p.life;
+    return p.alpha > 0;
+  });
+}
+function drawParticles() {
+  for (const p of popParticles) {
+    ctx.save(); ctx.globalAlpha = Math.max(0,p.alpha);
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fillStyle = p.color; ctx.fill(); ctx.restore();
+  }
+}
+function showFloatText(text, color) {
+  floatTexts.push({ text, color, x: W/2, y: H/2, alpha: 1, vy: -1.5, life: 1.2 });
+}
+function updateFloatTexts(dt) {
+  floatTexts = floatTexts.filter(f => { f.y += f.vy*dt*60; f.alpha -= dt/f.life; return f.alpha > 0; });
+}
+function drawFloatTexts() {
+  for (const f of floatTexts) {
+    ctx.save(); ctx.globalAlpha = Math.max(0,f.alpha);
+    ctx.font = 'bold 26px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillStyle = f.color; ctx.shadowColor = '#000'; ctx.shadowBlur = 6;
+    ctx.fillText(f.text, f.x, f.y); ctx.restore();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// BACKGROUND
+// ════════════════════════════════════════════════════════════════
+const bgStars = Array.from({length: 40}, () => ({
+  x: Math.random()*W, y: Math.random()*H, r: 0.5+Math.random()*1.5,
+  alpha: 0.2+Math.random()*0.5, twinkle: Math.random()*Math.PI*2,
+}));
+function drawBg() {
+  ctx.fillStyle = '#16213e'; ctx.fillRect(0,0,W,H);
+  for (const s of bgStars) {
+    s.twinkle += 0.02; ctx.save();
+    ctx.globalAlpha = s.alpha*(0.6+0.4*Math.sin(s.twinkle));
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// UI
+// ════════════════════════════════════════════════════════════════
+function updateHUD() {
+  document.getElementById('score-val').textContent = score;
+  document.getElementById('lives-val').textContent = '❤️'.repeat(Math.max(0, lives));
+  document.getElementById('level-val').textContent = level;
+  document.getElementById('level-badge-val').textContent = level;
+}
+function clearOverlays() { document.querySelectorAll('.overlay').forEach(o => o.remove()); }
+
+function renderAnswers(choices) {
+  const bar = document.getElementById('answer-bar');
+  bar.innerHTML = '';
+  if (!choices || !choices.length) return;
+  choices.forEach(v => {
+    const btn = document.createElement('button');
+    btn.className = 'ans-btn';
+    btn.textContent = v;
+    btn.onclick = () => handleAnswer(v, btn);
+    bar.appendChild(btn);
+  });
+}
+
+// ─── ANSWER LOCK: prevents rapid-tap exploit ───
+function lockAllButtons() {
+  answering = true;
+  document.querySelectorAll('.ans-btn').forEach(b => { b.disabled = true; });
+}
+function unlockAllButtons() {
+  answering = false;
+  document.querySelectorAll('.ans-btn').forEach(b => { b.disabled = false; });
+}
+
+function handleAnswer(value, btn) {
+  // ── Guard: reject if locked or game not running ──
+  if (!gameRunning || !currentQ || answering) return;
+
+  // ── LOCK ALL BUTTONS IMMEDIATELY ──
+  lockAllButtons();
+
+  if (value === currentQ.answer) {
+    btn.classList.add('correct');
+    sfxPop();
+    popActiveSlime();
+    combo++;
+    problemsSolved++;
+    const pts = 10 + (combo > 1 ? (combo - 1) * 5 : 0) + level * 2;
+    score += pts;
+    showFloatText(`+${pts}${combo > 1 ? ' 🔥x'+combo : ''}`, '#7fff00');
+    updateHUD();
+
+    if (problemsSolved >= problemsTotal) {
+      setTimeout(() => levelComplete(), 400);
+      return;
+    }
+    setTimeout(() => { answering = false; nextQuestion(); }, 300);
+  } else {
+    btn.classList.add('wrong');
+    sfxWrong();
+    combo = 0;
+    setTimeout(() => { btn.classList.remove('wrong'); unlockAllButtons(); }, 350);
+  }
+}
+
+function nextQuestion() {
+  if (!slimes.length) return;
+  const active = slimes.find(s => !s.popping);
+  if (!active) return;
+  currentQ = active.q;
+  const choices = buildChoices(currentQ.answer, currentQ.numChoices);
+  renderAnswers(choices);
+  answering = false;
+}
+
+function popActiveSlime() {
+  const active = slimes.find(s => !s.popping);
+  if (active) active.pop();
+}
+
+function checkEscaped() {
+  for (let i = slimes.length - 1; i >= 0; i--) {
+    if (slimes[i].isEscaped() && !slimes[i].popping) {
+      slimes[i].alive = false;
+      lives--; combo = 0;
+      sfxLoseHeart();
+      showFloatText('-1 ❤️', '#e74c3c');
+      updateHUD();
+      if (lives <= 0) { endGame(); return; }
+    }
+  }
+}
+
+function spawnSlime() {
+  const q = genQuestion(level);
+  slimes.push(new Slime(q));
+  if (!currentQ || !slimes.find(s => s.q === currentQ && !s.popping)) nextQuestion();
+}
+
+let levelBadgeTimer = 0;
+function showLevelBadge() {
+  document.getElementById('level-badge').style.display = 'block';
+  levelBadgeTimer = 2;
+}
+
+// ════════════════════════════════════════════════════════════════
+// GAME LOOP
+// ════════════════════════════════════════════════════════════════
+let lastTime = 0;
+
+function loop(ts) {
+  if (!gameRunning) return;
+  const dt = Math.min((ts - lastTime) / 1000, 0.1);
+  lastTime = ts;
+
+  const remaining = problemsTotal - problemsSolved;
+  const activeCount = slimes.filter(s => !s.popping).length;
+  if (ts - lastSpawn > spawnInterval && activeCount < Math.min(3, remaining) && remaining > 0) {
+    lastSpawn = ts;
+    spawnSlime();
+  }
+
+  slimes.forEach(s => s.update(dt));
+  checkEscaped();
+  slimes = slimes.filter(s => s.alive);
+
+  if (slimes.length > 0 && !answering) {
+    const active = slimes.find(s => !s.popping);
+    if (active && (!currentQ || currentQ !== active.q)) nextQuestion();
+  }
+
+  updateParticles(dt);
+  updateFloatTexts(dt);
+
+  if (levelBadgeTimer > 0) {
+    levelBadgeTimer -= dt;
+    if (levelBadgeTimer <= 0) document.getElementById('level-badge').style.display = 'none';
+  }
+
+  drawBg();
+  slimes.forEach(s => s.draw());
+  drawParticles();
+  drawFloatTexts();
+
+  animId = requestAnimationFrame(loop);
+}
+
+// ════════════════════════════════════════════════════════════════
+// SCREENS
+// ════════════════════════════════════════════════════════════════
+function showTitleScreen() {
+  gameRunning = false;
+  if (animId) cancelAnimationFrame(animId);
+  clearOverlays();
+  document.getElementById('answer-bar').innerHTML = '';
+  drawBg();
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  let html = `<h2>🧫 Math Slime</h2>
+    <p>Solve math problems to pop the slimes!<br>Don't let them reach the bottom!</p>`;
+
+  html += `<div class="level-grid">`;
+  for (let i = 1; i <= MAX_LEVEL; i++) {
+    const unlocked = i <= unlockedLevels;
+    const isCurrent = i === unlockedLevels;
+    const cls = unlocked ? ('unlocked' + (isCurrent ? ' current' : '')) : 'locked';
+    html += `<div class="level-circle ${cls}" data-level="${i}">${i}</div>`;
+  }
+  html += `</div>`;
+
+  if (!currentUser) {
+    html += `<button class="btn btn-google" id="gsign-btn">
+      <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </button>`;
+  }
+
+  html += `<button class="icon-btn" id="lb-btn" style="font-size:2rem;margin-top:4px" title="Leaderboard">🏆</button>`;
+
+  ov.innerHTML = html;
+  document.getElementById('game-area').appendChild(ov);
+
+  ov.querySelectorAll('.level-circle.unlocked').forEach(el => {
+    el.onclick = () => startGame(parseInt(el.dataset.level));
+  });
+  const gs = document.getElementById('gsign-btn');
+  if (gs) gs.onclick = signInGoogle;
+  document.getElementById('lb-btn').onclick = showLeaderboard;
+}
+
+function startGame(lvl) {
+  level = lvl; score = 0; lives = 3; combo = 0;
+  problemsSolved = 0; answering = false;
+  const def = LEVELS[Math.min(lvl, MAX_LEVEL)];
+  problemsTotal = def.problems;
+  levelStartTime = Date.now();
+
+  slimes = []; popParticles = []; floatTexts = [];
+  slimeSpeed = (H / def.speed) / 60;
+  spawnInterval = def.speed * 400;
+  lastSpawn = performance.now() - spawnInterval;
+  currentQ = null; gameRunning = true;
+
+  clearOverlays();
+  updateHUD();
+  showLevelBadge();
+  document.getElementById('answer-bar').innerHTML = '';
+  lastTime = performance.now();
+  animId = requestAnimationFrame(loop);
+}
+
+async function levelComplete() {
+  gameRunning = false;
+  if (animId) cancelAnimationFrame(animId);
+  sfxLevelUp();
+  const elapsed = (Date.now() - levelStartTime) / 1000;
+
+  if (level >= unlockedLevels && level < MAX_LEVEL) {
+    unlockedLevels = level + 1;
+    saveLocal();
+    await saveToFirestore();
+  }
+  if (currentUser) {
+    await saveLevelScore(level, score, elapsed);
+    await submitLeaderboard(level, score, elapsed);
+  }
+
+  clearOverlays();
+  document.getElementById('answer-bar').innerHTML = '';
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  let html = `<h2>Level Clear! 🎉</h2>
+    <p class="big">Score: ${score}</p>
+    <p>You solved ${problemsSolved} problems in ${Math.round(elapsed)}s!</p>`;
+  if (currentUser) html += `<p style="font-size:0.85rem;color:#7fff00">Score submitted!</p>`;
+  if (level < MAX_LEVEL) html += `<button class="btn btn-green" id="next-btn">Next Level →</button>`;
+  else html += `<p style="color:#FFD700;font-size:1.3rem">🌟 You finished all levels! 🌟</p>`;
+  html += `<button class="link-btn" id="back-btn">Back to Levels</button>`;
+  ov.innerHTML = html;
+  document.getElementById('game-area').appendChild(ov);
+
+  const nb = document.getElementById('next-btn');
+  if (nb) nb.onclick = () => startGame(level + 1);
+  document.getElementById('back-btn').onclick = showTitleScreen;
+}
+
+function endGame() {
+  gameRunning = false;
+  if (animId) cancelAnimationFrame(animId);
+  if (currentUser && score > 0) {
+    submitLeaderboard(level, score, (Date.now() - levelStartTime) / 1000);
+  }
+  clearOverlays();
+  document.getElementById('answer-bar').innerHTML = '';
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `
+    <h2>Great Try!</h2>
+    <p class="big">Score: ${score}</p>
+    <p>You solved ${problemsSolved} problems!</p>
+    <button class="btn btn-green" id="retry-btn">Try Again</button>
+    <button class="link-btn" id="back-btn2">Back to Levels</button>`;
+  document.getElementById('game-area').appendChild(ov);
+  document.getElementById('retry-btn').onclick = () => startGame(level);
+  document.getElementById('back-btn2').onclick = showTitleScreen;
+}
+
+// ════════════════════════════════════════════════════════════════
+// LEADERBOARD
+// ════════════════════════════════════════════════════════════════
+let lbTab = 'score', lbLevelFilter = 1;
+
+async function showLeaderboard() {
+  gameRunning = false;
+  if (animId) cancelAnimationFrame(animId);
+  clearOverlays();
+  document.getElementById('answer-bar').innerHTML = '';
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.style.justifyContent = 'flex-start';
+  ov.style.paddingTop = '16px';
+  ov.innerHTML = `
+    <div style="display:flex;width:100%;justify-content:space-between;align-items:center">
+      <h2 style="font-size:1.5rem;margin:0">🏆 Leaderboard</h2>
+      <button class="icon-btn" id="lb-close" style="font-size:1.4rem;color:#fff">✕</button>
+    </div>
+    <div class="lb-tabs">
+      <button class="lb-tab ${lbTab==='score'?'active':''}" data-tab="score">🏆 Score</button>
+      <button class="lb-tab ${lbTab==='time'?'active':''}" data-tab="time">⚡ Fastest</button>
+      <button class="lb-tab ${lbTab==='levels'?'active':''}" data-tab="levels">🌟 Levels</button>
+    </div>
+    <div id="lb-content" style="width:100%"><p style="color:#888">Loading...</p></div>`;
+  document.getElementById('game-area').appendChild(ov);
+
+  document.getElementById('lb-close').onclick = showTitleScreen;
+  ov.querySelectorAll('.lb-tab').forEach(t => {
+    t.onclick = () => {
+      lbTab = t.dataset.tab;
+      ov.querySelectorAll('.lb-tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      loadLB();
+    };
+  });
+  await loadLB();
+}
+
+async function loadLB() {
+  const c = document.getElementById('lb-content');
+  if (!c) return;
+  c.innerHTML = '<p style="color:#888">Loading...</p>';
+  let html = '';
+  try {
+    if (lbTab === 'score') {
+      const snap = await db.collection('leaderboard').orderBy('score','desc').limit(20).get();
+      html = renderRows(snap.docs, d => d.score + ' pts');
+    } else if (lbTab === 'time') {
+      html = `<select class="lb-level-select" id="lb-lvl-sel">`;
+      for (let i = 1; i <= MAX_LEVEL; i++) html += `<option value="${i}" ${i===lbLevelFilter?'selected':''}>Lv${i} – ${LEVELS[i].name}</option>`;
+      html += `</select>`;
+      const snap = await db.collection('leaderboard').where('level','==',lbLevelFilter).orderBy('time','asc').limit(20).get();
+      html += renderRows(snap.docs, d => d.time + 's');
+    } else {
+      const snap = await db.collection('users').orderBy('unlockedLevels','desc').limit(20).get();
+      html = renderRows(snap.docs, d => 'Lv ' + d.unlockedLevels, true);
+    }
+  } catch(e) { html = `<p class="lb-empty">Could not load. Are you online?</p>`; }
+  if (!html) html = `<p class="lb-empty">No entries yet!</p>`;
+  c.innerHTML = html;
+  if (!currentUser) c.innerHTML += `<p style="color:#7fff00;font-size:0.8rem;margin-top:8px">Sign in to appear here!</p>`;
+  const sel = document.getElementById('lb-lvl-sel');
+  if (sel) sel.onchange = () => { lbLevelFilter = parseInt(sel.value); loadLB(); };
+}
+
+function renderRows(docs, fmt, isUser = false) {
+  if (!docs.length) return `<p class="lb-empty">No entries yet!</p>`;
+  const medals = ['🥇','🥈','🥉'];
+  let h = '<div class="lb-table">';
+  docs.forEach((doc, i) => {
+    const d = doc.data();
+    const me = currentUser && (isUser ? doc.id === currentUser.uid : d.uid === currentUser.uid);
+    const name = (d.displayName || 'Slime Hero').split(' ')[0];
+    const av = d.photoURL ? `<img class="lb-avatar" src="${d.photoURL}" alt="">` : `<div class="lb-avatar"></div>`;
+    h += `<div class="lb-row ${me?'me':''}">
+      <span class="lb-rank">${i<3?medals[i]:i+1}</span>${av}
+      <span class="lb-name">${name}</span>
+      <span class="lb-stat">${fmt(d)}</span></div>`;
+  });
+  return h + '</div>';
+}
+
+// ════════════════════════════════════════════════════════════════
+// UTILS & INIT
+// ════════════════════════════════════════════════════════════════
+function rand(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+loadLocal();
+drawBg();
+showTitleScreen();
+</script>
+</body>
+</html>
