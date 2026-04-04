@@ -98,18 +98,6 @@ Include the Firebase SDK via CDN (no npm/build step):
 
 Firebase config object (replace with real project values):
 
-```js
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "mathslime.firebaseapp.com",
-  projectId: "mathslime",
-  storageBucket: "mathslime.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "YOUR_APP_ID"
-};
-firebase.initializeApp(firebaseConfig);
-```
-
 ### 4.3 Auth Flow
 
 ```
