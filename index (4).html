@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>MathSlime</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Patrick+Hand&display=swap" rel="stylesheet">
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #FFF8F0;
+      --text: #3A3A3A;
+      --slime-green: #A8E06C;
+      --slime-pink: #FF8FA3;
+      --slime-purple: #B49FDC;
+      --correct: #6EDBA2;
+      --wrong: #FF6B6B;
+      --heart: #E8453C;
+      --btn: #64B5F6;
+      --btn-hover: #42A5F5;
+      --overlay-bg: rgba(0,0,0,0.82);
+    }
+
+    body {
+      background: var(--bg);
+      font-family: 'Patrick Hand', 'Comic Sans MS', cursive, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      min-height: 100dvh;
+      color: var(--text);
+      user-select: none;
+      -webkit-user-select: none;
+      overflow-x: hidden;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 8px 12px;
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+
+    /* ─── Top bar ─── */
+    #top-bar {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0 8px;
+      font-size: 1.1rem;
+    }
+    #hearts { font-size: 1.3rem; letter-spacing: 2px; }
+    #level-label { font-family: 'Fredoka One', cursive; color: var(--text); font-size: 1rem; }
+    #top-icons { display: flex; gap: 10px; align-items: center; }
+    .icon-btn {
+      background: none; border: none; font-size: 1.5rem; cursor: pointer;
+      padding: 4px; border-radius: 8px; transition: background 0.15s;
+    }
+    .icon-btn:hover { background: #00000010; }
+
+    /* ─── User info ─── */
+    #user-bar {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 0 6px;
+      font-size: 0.95rem;
+    }
+    #user-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--slime-green); border: 2px solid var(--text);
+      object-fit: cover;
+    }
+    #user-name { font-weight: bold; }
+    #sign-out-link {
+      margin-left: auto; font-size: 0.8rem; color: #999;
+      cursor: pointer; text-decoration: underline;
+    }
+
+    /* ─── Game area ─── */
+    #game-area {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: #16213e;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 3px solid #0f3460;
+      box-shadow: 0 4px 24px #0f346040;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    /* ─── Overlay (shared for all screens) ─── */
+    .overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: var(--overlay-bg);
+      border-radius: 14px;
+      z-index: 10; color: #eee;
+      text-align: center;
+      gap: 12px; padding: 20px;
+      overflow-y: auto;
+    }
+    .overlay h2 {
+      font-family: 'Fredoka One', cursive;
+      font-size: 2.2rem; color: #7fff00;
+      text-shadow: 0 0 16px #7fff0080;
+      margin-bottom: 4px;
+    }
+    .overlay p { font-size: 1.1rem; color: #ccc; line-height: 1.4; }
+    .overlay .big { font-size: 1.8rem; color: #fff; font-weight: bold; }
+
+    /* ─── Buttons ─── */
+    .btn {
+      padding: 14px 36px;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.2rem;
+      border: none; border-radius: 14px;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.15s;
+      color: #fff;
+    }
+    .btn:hover { transform: scale(1.05); }
+    .btn:active { transform: scale(0.97); }
+    .btn-green { background: #7fff00; color: var(--text); box-shadow: 0 4px 16px #7fff0050; }
+    .btn-blue { background: var(--btn); color: #fff; box-shadow: 0 4px 16px #64B5F640; }
+    .btn-small {
+      padding: 8px 20px; font-size: 0.95rem; border-radius: 10px;
+    }
+    .btn-google {
+      background: #fff; color: #333; border: 2px solid #ddd;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px; font-family: 'Patrick Hand', sans-serif;
+      font-size: 1.05rem;
+    }
+    .btn-google:hover { border-color: #4285f4; }
+    .btn-google svg { width: 20px; height: 20px; }
+
+    .link-btn {
+      background: none; border: none; color: #aaa;
+      font-family: 'Patrick Hand', sans-serif;
+      font-size: 1rem; cursor: pointer;
+      text-decoration: underline;
+    }
+    .link-btn:hover { color: #fff; }
+
+    /* ─── Level Select Grid ─── */
+    .level-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      width: 100%;
+      max-width: 280px;
+      margin: 10px auto;
+    }
+    .level-circle {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.2rem;
+      border: 3px solid transparent;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      position: relative;
+      justify-self: center;
+    }
+    .level-circle:hover { transform: scale(1.1); }
+    .level-circle.unlocked {
+      background: var(--btn);
+      color: #fff;
+      border-color: #42A5F5;
+      box-shadow: 0 2px 10px #64B5F640;
+    }
+    .level-circle.current {
+      animation: pulse-glow 1.5s ease-in-out infinite;
+    }
+    .level-circle.locked {
+      background: #ccc;
+      color: #999;
+      cursor: default;
+    }
+    .level-circle.locked::after {
+      content: '🔒';
+      position: absolute;
+      font-size: 0.6rem;
+      bottom: -2px; right: -2px;
+    }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 8px #64B5F660; }
+      50% { box-shadow: 0 0 20px #64B5F6a0; }
+    }
+
+    /* ─── Answer bar ─── */
+    #answer-bar {
+      width: 100%;
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .ans-btn {
+      padding: 14px 24px;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.3rem;
+      border: none; border-radius: 14px;
+      cursor: pointer;
+      background: var(--btn);
+      color: #fff;
+      transition: background 0.15s, transform 0.1s;
+      min-width: 72px;
+      box-shadow: 0 3px 8px #64B5F630;
+    }
+    .ans-btn:hover { background: var(--btn-hover); transform: scale(1.06); }
+    .ans-btn.correct { background: var(--correct); box-shadow: 0 0 18px #6EDBA280; }
+    .ans-btn.wrong { background: var(--wrong); animation: shake 0.3s; }
+
+    /* ─── Numpad ─── */
+    .numpad {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      width: 100%;
+      max-width: 320px;
+      margin: 0 auto;
+    }
+    .numpad-display {
+      grid-column: 1 / -1;
+      background: #16213e;
+      color: #fff;
+      font-family: 'Fredoka One', cursive;
+      font-size: 2rem;
+      text-align: center;
+      padding: 10px;
+      border-radius: 12px;
+      min-height: 52px;
+      letter-spacing: 4px;
+    }
+    .num-btn {
+      padding: 12px;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.4rem;
+      border: none; border-radius: 12px;
+      cursor: pointer;
+      background: var(--btn);
+      color: #fff;
+      min-height: 52px;
+      transition: background 0.1s, transform 0.1s;
+    }
+    .num-btn:hover { background: var(--btn-hover); }
+    .num-btn:active { transform: scale(0.94); }
+    .num-btn.action-del { background: #FF8FA3; }
+    .num-btn.action-go { background: var(--correct); grid-column: span 2; }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      75% { transform: translateX(6px); }
+    }
+
+    /* ─── Leaderboard ─── */
+    .lb-tabs {
+      display: flex; gap: 0; width: 100%; border-radius: 10px;
+      overflow: hidden; margin-bottom: 10px;
+    }
+    .lb-tab {
+      flex: 1; padding: 8px 4px; border: none;
+      font-family: 'Patrick Hand', sans-serif;
+      font-size: 0.9rem; cursor: pointer;
+      background: #333; color: #aaa;
+      transition: background 0.15s;
+    }
+    .lb-tab.active { background: #0f3460; color: #fff; }
+    .lb-table {
+      width: 100%; max-height: 280px; overflow-y: auto;
+    }
+    .lb-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px; border-radius: 8px; font-size: 0.9rem;
+    }
+    .lb-row:nth-child(odd) { background: #ffffff10; }
+    .lb-row.me { background: #7fff0020; border: 1px solid #7fff0040; }
+    .lb-rank { width: 28px; text-align: center; font-weight: bold; }
+    .lb-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--slime-green); }
+    .lb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-stat { font-family: 'Fredoka One', cursive; font-size: 0.95rem; color: #7fff00; }
+    .lb-empty { color: #888; font-style: italic; padding: 20px; }
+    .lb-level-select { background: #222; color: #fff; border: 1px solid #555; border-radius: 8px; padding: 4px 8px; font-family: 'Patrick Hand', sans-serif; margin-bottom: 8px; }
+
+    /* ─── Problem display ─── */
+    #problem-display {
+      width: 100%;
+      text-align: center;
+      font-family: 'Fredoka One', cursive;
+      font-size: 2rem;
+      color: var(--text);
+      padding: 8px 0 4px;
+      min-height: 48px;
+    }
+
+    /* ─── Level badge ─── */
+    #level-badge {
+      position: absolute;
+      top: 10px; left: 50%; transform: translateX(-50%);
+      background: #ffffff20;
+      color: #7fff00;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-family: 'Fredoka One', cursive;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 400px) {
+      .overlay h2 { font-size: 1.6rem; }
+      .level-circle { width: 46px; height: 46px; font-size: 1rem; }
+      .num-btn { font-size: 1.1rem; padding: 10px; min-height: 46px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- User bar (shown when signed in) -->
+  <div id="user-bar" style="display:none">
+    <img id="user-avatar" src="" alt="">
+    <span id="user-name"></span>
+    <span id="sign-out-link">Sign Out</span>
+  </div>
+
+  <!-- Top bar (shown during gameplay) -->
+  <div id="top-bar" style="display:none">
+    <div id="hearts">❤️❤️❤️</div>
+    <div id="level-label">Level 1</div>
+    <div id="top-icons">
+      <button class="icon-btn" id="mute-btn" title="Toggle Sound">🔇</button>
+    </div>
+  </div>
+
+  <!-- Problem display -->
+  <div id="problem-display" style="display:none" aria-live="polite"></div>
+
+  <!-- Game area -->
+  <div id="game-area">
+    <canvas id="canvas"></canvas>
+    <div id="level-badge" style="display:none">LEVEL <span id="level-badge-val">1</span></div>
+    <!-- Overlays are injected here -->
+  </div>
+
+  <!-- Answer bar / numpad -->
+  <div id="answer-bar"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// FIREBASE CONFIG
+// ════════════════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyAAb4put1XeblHnBOFlzNB9APMdeKZJ2Ns",
+  authDomain: "mathslime-1ce35.firebaseapp.com",
+  projectId: "mathslime-1ce35",
+  storageBucket: "mathslime-1ce35.firebasestorage.app",
+  messagingSenderId: "1058249102516",
+  appId: "1:1058249102516:web:65c7070eec7f6fe1c033e1",
+  measurementId: "G-CBC1V0ZKQZ"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// ════════════════════════════════════════════════════════════════
+// CANVAS SETUP
+// ════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  W = canvas.width = Math.round(rect.width * devicePixelRatio);
+  H = canvas.height = Math.round(rect.height * devicePixelRatio);
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+function cW() { return W / devicePixelRatio; }
+function cH() { return H / devicePixelRatio; }
+
+// ════════════════════════════════════════════════════════════════
+// LEVEL DEFINITIONS
+// ════════════════════════════════════════════════════════════════
+const LEVELS = [
+  null, // index 0 unused
+  { name: 'Baby Steps',         newOp: '+',  range: [1,9],   input: 'choice', speed: 12, problems: 5  },
+  { name: 'Take Away',          newOp: '-',  range: [1,9],   input: 'choice', speed: 12, problems: 8  },
+  { name: 'Double Digits',      newOp: '+',  range: [0,20],  input: 'numpad', speed: 10, problems: 8  },
+  { name: 'Subtract & Stretch', newOp: '-',  range: [0,20],  input: 'numpad', speed: 10, problems: 10 },
+  { name: 'First Times',        newOp: '×',  range: [0,5],   input: 'numpad', speed: 8,  problems: 10 },
+  { name: 'Fair Shares',        newOp: '÷',  range: [2,5],   input: 'numpad', speed: 8,  problems: 10 },
+];
+const MAX_LEVEL = LEVELS.length - 1;
+
+// Accumulated ops per level
+function getOpsForLevel(lvl) {
+  const ops = new Set();
+  for (let i = 1; i <= Math.min(lvl, MAX_LEVEL); i++) {
+    ops.add(LEVELS[i].newOp);
+  }
+  return [...ops];
+}
+
+// ════════════════════════════════════════════════════════════════
+// PROBLEM GENERATOR (accumulation rule)
+// ════════════════════════════════════════════════════════════════
+function genQuestion(lvl) {
+  const clampedLvl = Math.min(lvl, MAX_LEVEL);
+  const def = LEVELS[clampedLvl];
+  const allOps = getOpsForLevel(clampedLvl);
+
+  // 50% new op, 50% review (if there are review ops)
+  let op;
+  if (allOps.length <= 1 || Math.random() < 0.5) {
+    op = def.newOp;
+  } else {
+    const review = allOps.filter(o => o !== def.newOp);
+    op = review[Math.floor(Math.random() * review.length)];
+  }
+
+  let a, b, answer;
+  const [lo, hi] = def.range;
+
+  if (op === '+') {
+    // For levels 1-2, use 1-9; for 3+, use expanded range
+    const addHi = clampedLvl <= 2 ? 9 : hi;
+    a = rand(Math.max(1, lo), addHi);
+    b = rand(Math.max(1, lo), addHi);
+    answer = a + b;
+  } else if (op === '-') {
+    const subHi = clampedLvl <= 2 ? 9 : hi;
+    a = rand(Math.max(1, lo), subHi);
+    b = rand(lo, a);
+    answer = a - b;
+  } else if (op === '×') {
+    a = rand(0, 5);
+    b = rand(0, 5);
+    answer = a * b;
+  } else { // ÷
+    b = rand(2, 5);
+    const result = rand(1, 10);
+    a = b * result;
+    answer = result;
+  }
+
+  const useChoices = def.input === 'choice';
+  return {
+    text: `${a} ${op} ${b} = ?`,
+    answer,
+    choices: useChoices ? buildChoices(answer) : null
+  };
+}
+
+function buildChoices(correct) {
+  const set = new Set([correct]);
+  // distractor ±1
+  let d1 = correct + (Math.random() < 0.5 ? 1 : -1);
+  if (d1 < 0) d1 = correct + 1;
+  set.add(d1);
+  // distractor ±2 or ±3
+  let attempts = 0;
+  while (set.size < 3 && attempts < 20) {
+    let d = correct + rand(-3, 3);
+    if (d >= 0 && d !== correct) set.add(d);
+    attempts++;
+  }
+  // fallback
+  while (set.size < 3) set.add(correct + set.size);
+  return shuffle([...set]);
+}
+
+// ════════════════════════════════════════════════════════════════
+// GAME STATE
+// ════════════════════════════════════════════════════════════════
+let state = {
+  screen: 'title',
+  user: null,
+  unlockedLevels: 1,
+  currentLevel: 1,
+  hearts: 3,
+  score: 0,
+  problemsSolved: 0,
+  problemsTotal: 0,
+  combo: 0,
+  levelStartTime: 0,
+  muted: true,
+};
+
+let slimes = [], popParticles = [], floatTexts = [];
+let currentQ = null, numpadValue = '';
+let gameRunning = false, animId = null;
+let lastTime = 0, lastSpawn = 0, spawnInterval = 3000;
+let levelBadgeTimer = 0;
+
+const COLORS = [
+  { body:'#A8E06C', eye:'#3A6B1E', shade:'#7CB342' },
+  { body:'#64B5F6', eye:'#1A4A80', shade:'#2196F3' },
+  { body:'#FF8FA3', eye:'#7B1D34', shade:'#E91E63' },
+  { body:'#FFB74D', eye:'#7C3F00', shade:'#FF9800' },
+  { body:'#B49FDC', eye:'#3B0764', shade:'#7C3AED' },
+  { body:'#4DD0E1', eye:'#004D54', shade:'#00ACC1' },
+];
+
+// ════════════════════════════════════════════════════════════════
+// PERSISTENCE
+// ════════════════════════════════════════════════════════════════
+function loadLocal() {
+  try {
+    const v = localStorage.getItem('mathslime_unlocked');
+    if (v) state.unlockedLevels = Math.max(state.unlockedLevels, parseInt(v));
+  } catch(e) {}
+}
+function saveLocal() {
+  try { localStorage.setItem('mathslime_unlocked', state.unlockedLevels); } catch(e) {}
+}
+
+async function syncFromFirestore(uid) {
+  try {
+    const doc = await db.collection('users').doc(uid).get();
+    if (doc.exists) {
+      const data = doc.data();
+      if (data.unlockedLevels) {
+        state.unlockedLevels = Math.max(state.unlockedLevels, data.unlockedLevels);
+        saveLocal();
+      }
+    }
+  } catch(e) { console.log('Firestore read failed, using local'); }
+}
+
+async function saveToFirestore() {
+  if (!state.user) return;
+  try {
+    await db.collection('users').doc(state.user.uid).set({
+      displayName: state.user.displayName || 'Slime Hero',
+      photoURL: state.user.photoURL || '',
+      unlockedLevels: state.unlockedLevels,
+    }, { merge: true });
+  } catch(e) { console.log('Firestore write failed'); }
+}
+
+async function saveLevelScore(lvl, score, time) {
+  if (!state.user) return;
+  try {
+    const ref = db.collection('users').doc(state.user.uid).collection('levels').doc('level_' + lvl);
+    const doc = await ref.get();
+    const prev = doc.exists ? doc.data() : {};
+    await ref.set({
+      bestScore: Math.max(score, prev.bestScore || 0),
+      bestTime: prev.bestTime ? Math.min(time, prev.bestTime) : time,
+      timesCompleted: (prev.timesCompleted || 0) + 1,
+      lastPlayed: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch(e) {}
+}
+
+async function submitLeaderboard(lvl, score, time) {
+  if (!state.user) return;
+  try {
+    await db.collection('leaderboard').add({
+      uid: state.user.uid,
+      displayName: state.user.displayName || 'Slime Hero',
+      photoURL: state.user.photoURL || '',
+      level: lvl,
+      score: score,
+      time: Math.round(time),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      type: 'level_clear',
+    });
+  } catch(e) { console.log('Leaderboard submit failed'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// AUTH
+// ════════════════════════════════════════════════════════════════
+function updateUserUI() {
+  const bar = document.getElementById('user-bar');
+  if (state.user) {
+    bar.style.display = 'flex';
+    const avatar = document.getElementById('user-avatar');
+    const name = document.getElementById('user-name');
+    if (state.user.photoURL) {
+      avatar.src = state.user.photoURL;
+    }
+    const full = state.user.displayName || 'Slime Hero';
+    name.textContent = 'Hi, ' + full.split(' ')[0] + '!';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+document.getElementById('sign-out-link').onclick = async () => {
+  await auth.signOut();
+  state.user = null;
+  updateUserUI();
+  showTitleScreen();
+};
+
+auth.onAuthStateChanged(async (user) => {
+  if (user) {
+    state.user = { uid: user.uid, displayName: user.displayName, photoURL: user.photoURL };
+    await syncFromFirestore(user.uid);
+    updateUserUI();
+  }
+  if (state.screen === 'title') showTitleScreen();
+});
+
+async function signInWithGoogle() {
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await auth.signInWithPopup(provider);
+  } catch(e) {
+    console.log('Sign-in cancelled or failed', e);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// AUDIO (Web Audio API, synthesized)
+// ════════════════════════════════════════════════════════════════
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playTone(freq, dur, type='sine', vol=0.15) {
+  if (state.muted) return;
+  try {
+    const a = getAudio();
+    const osc = a.createOscillator();
+    const gain = a.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, a.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(a.destination);
+    osc.start();
+    osc.stop(a.currentTime + dur);
+  } catch(e) {}
+}
+function sfxPop() { playTone(800, 0.15, 'sine', 0.2); setTimeout(() => playTone(1200, 0.1, 'sine', 0.12), 60); }
+function sfxWrong() { playTone(200, 0.25, 'triangle', 0.15); }
+function sfxLoseHeart() { playTone(400, 0.15); setTimeout(() => playTone(300, 0.15), 100); setTimeout(() => playTone(200, 0.3), 200); }
+function sfxLevelComplete() { playTone(523, 0.15); setTimeout(() => playTone(659, 0.15), 120); setTimeout(() => playTone(784, 0.25), 240); }
+
+document.getElementById('mute-btn').onclick = () => {
+  state.muted = !state.muted;
+  document.getElementById('mute-btn').textContent = state.muted ? '🔇' : '🔊';
+  if (!state.muted) getAudio(); // init on first unmute (user gesture)
+};
+
+// ════════════════════════════════════════════════════════════════
+// SLIME CLASS
+// ════════════════════════════════════════════════════════════════
+class Slime {
+  constructor(question, speed) {
+    this.q = question;
+    this.x = rand(50, cW() - 50);
+    this.y = -50;
+    this.r = 32;
+    this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    this.vy = (cH() / speed) / 60; // pixels per frame at 60fps
+    this.vx = (Math.random() - 0.5) * 0.6;
+    this.wobble = Math.random() * Math.PI * 2;
+    this.wobbleDir = 1;
+    this.alpha = 1;
+    this.popping = false;
+    this.popScale = 1;
+    this.alive = true;
+  }
+  update(dt) {
+    if (this.popping) {
+      this.popScale += dt * 4;
+      this.alpha -= dt * 5;
+      if (this.alpha <= 0) this.alive = false;
+      return;
+    }
+    this.y += this.vy * dt * 60;
+    this.x += this.vx * dt * 60;
+    this.wobble += this.wobbleDir * dt * 3;
+    if (Math.abs(this.wobble) > 0.2) this.wobbleDir *= -1;
+    if (this.x < this.r + 10) { this.x = this.r + 10; this.vx *= -1; }
+    if (this.x > cW() - this.r - 10) { this.x = cW() - this.r - 10; this.vx *= -1; }
+    if (this.y > cH() + this.r) this.alive = false;
+  }
+  isEscaped() { return !this.popping && this.y > cH() + this.r; }
+  pop() { this.popping = true; spawnParticles(this.x, this.y, this.color.body); }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, this.alpha);
+    ctx.translate(this.x, this.y);
+    if (this.popping) ctx.scale(this.popScale, this.popScale);
+    const sx = 1 + Math.sin(this.wobble) * 0.1;
+    const sy = 1 - Math.sin(this.wobble) * 0.07;
+    ctx.scale(sx, sy);
+    // shadow
+    ctx.beginPath();
+    ctx.ellipse(3, this.r * 0.65, this.r * 0.85, this.r * 0.25, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#00000030';
+    ctx.fill();
+    // body – blob shape
+    ctx.beginPath();
+    ctx.moveTo(-this.r, 0);
+    ctx.bezierCurveTo(-this.r, -this.r * 1.1, this.r, -this.r * 1.1, this.r, 0);
+    ctx.bezierCurveTo(this.r, this.r * 0.6, this.r * 0.5, this.r * 0.9, this.r * 0.3, this.r * 0.75);
+    ctx.lineTo(-this.r * 0.3, this.r * 0.75);
+    ctx.bezierCurveTo(-this.r * 0.5, this.r * 0.9, -this.r, this.r * 0.6, -this.r, 0);
+    ctx.fillStyle = this.color.body;
+    ctx.fill();
+    // shine
+    ctx.beginPath();
+    ctx.ellipse(-this.r * 0.3, -this.r * 0.35, this.r * 0.2, this.r * 0.12, -0.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff70';
+    ctx.fill();
+    // eyes
+    for (const ex of [-9, 9]) {
+      ctx.beginPath();
+      ctx.arc(ex, -6, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ex + 1.5, -5, 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = this.color.eye;
+      ctx.fill();
+    }
+    // smile
+    ctx.beginPath();
+    ctx.arc(0, 4, 8, 0.3, Math.PI - 0.3);
+    ctx.strokeStyle = this.color.eye;
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    // drips
+    for (const dx of [-8, 0, 8]) {
+      ctx.beginPath();
+      ctx.arc(dx, this.r * 0.75 + 4 + Math.abs(dx) * 0.15, 3, 0, Math.PI * 2);
+      ctx.fillStyle = this.color.body;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// PARTICLES
+// ════════════════════════════════════════════════════════════════
+function spawnParticles(x, y, color) {
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    const colors = [color, '#FFD700', '#FF6B6B', '#64B5F6', '#A8E06C', '#B49FDC'];
+    popParticles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      r: 3 + Math.random() * 4,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      alpha: 1,
+      life: 0.5 + Math.random() * 0.4
+    });
+  }
+}
+function updateParticles(dt) {
+  popParticles = popParticles.filter(p => {
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.vy += 0.15;
+    p.alpha -= dt / p.life;
+    return p.alpha > 0;
+  });
+}
+function drawParticles() {
+  for (const p of popParticles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// FLOAT TEXT
+// ════════════════════════════════════════════════════════════════
+function showFloat(text, color) {
+  floatTexts.push({ text, color, x: cW()/2, y: cH()/2, alpha: 1, vy: -1.5, life: 1 });
+}
+function updateFloats(dt) {
+  floatTexts = floatTexts.filter(f => {
+    f.y += f.vy * dt * 60;
+    f.alpha -= dt / f.life;
+    return f.alpha > 0;
+  });
+}
+function drawFloats() {
+  for (const f of floatTexts) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, f.alpha);
+    ctx.font = 'bold 22px Fredoka One, cursive';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = f.color;
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.restore();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// BACKGROUND
+// ════════════════════════════════════════════════════════════════
+let bgStars = [];
+function initStars() {
+  bgStars = Array.from({length: 35}, () => ({
+    x: Math.random() * cW(), y: Math.random() * cH(),
+    r: 0.5 + Math.random() * 1.5,
+    alpha: 0.2 + Math.random() * 0.5,
+    twinkle: Math.random() * Math.PI * 2,
+  }));
+}
+initStars();
+
+function drawBg() {
+  ctx.fillStyle = '#16213e';
+  ctx.fillRect(0, 0, cW(), cH());
+  for (const s of bgStars) {
+    s.twinkle += 0.015;
+    ctx.save();
+    ctx.globalAlpha = s.alpha * (0.6 + 0.4 * Math.sin(s.twinkle));
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// SCREENS
+// ════════════════════════════════════════════════════════════════
+function clearOverlays() {
+  document.querySelectorAll('.overlay').forEach(o => o.remove());
+}
+
+function showTitleScreen() {
+  state.screen = 'title';
+  gameRunning = false;
+  if (animId) cancelAnimationFrame(animId);
+  document.getElementById('top-bar').style.display = 'none';
+  document.getElementById('problem-display').style.display = 'none';
+  document.getElementById('answer-bar').innerHTML = '';
+  clearOverlays();
+  drawBg();
+
+  // Draw idle slime on canvas
+  drawIdleSlime();
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  let html = `<h2>🧫 MathSlime</h2>
+    <p>Solve math to pop the slimes!</p>`;
+
+  // Level grid
+  html += `<div class="level-grid">`;
+  for (let i = 1; i <= MAX_LEVEL; i++) {
+    const unlocked = i <= state.unlockedLevels;
+    const current = i === state.unlockedLevels;
+    const cls = unlocked ? ('unlocked' + (current ? ' current' : '')) : 'locked';
+    html += `<div class="level-circle ${cls}" data-level="${i}">${i}</div>`;
+  }
+  html += `</div>`;
+
+  // Auth buttons
+  if (!state.user) {
+    html += `<button class="btn-google" id="google-signin-btn">
+      <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </button>
+    <span class="link-btn" id="guest-btn" style="color:#aaa;font-size:0.9rem">Play as Guest</span>`;
+  }
+
+  html += `<button class="icon-btn" id="lb-btn-title" style="font-size:1.8rem;margin-top:4px" title="Leaderboard">🏆</button>`;
+
+  ov.innerHTML = html;
+  document.getElementById('game-area').appendChild(ov);
+
+  // Event listeners
+  ov.querySelectorAll('.level-circle.unlocked').forEach(el => {
+    el.onclick = () => {
+      state.currentLevel = parseInt(el.dataset.level);
+      startLevel(state.currentLevel);
+    };
+  });
+
+  const gBtn = document.getElementById('google-signin-btn');
+  if (gBtn) gBtn.onclick = signInWithGoogle;
+  const guest = document.getElementById('guest-btn');
+  if (guest) guest.onclick = () => {}; // already on title, just pick a level
+
+  document.getElementById('lb-btn-title').onclick = () => showLeaderboard();
+}
+
+function drawIdleSlime() {
+  drawBg();
+  ctx.save();
+  const cx = cW() / 2, cy = cH() / 2 + 20;
+  const r = 40;
+  const col = COLORS[0];
+  ctx.translate(cx, cy);
+  // body
+  ctx.beginPath();
+  ctx.moveTo(-r, 0);
+  ctx.bezierCurveTo(-r, -r * 1.1, r, -r * 1.1, r, 0);
+  ctx.bezierCurveTo(r, r * 0.6, r * 0.5, r * 0.9, r * 0.3, r * 0.75);
+  ctx.lineTo(-r * 0.3, r * 0.75);
+  ctx.bezierCurveTo(-r * 0.5, r * 0.9, -r, r * 0.6, -r, 0);
+  ctx.fillStyle = col.body;
+  ctx.fill();
+  // shine
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.3, -r * 0.35, r * 0.2, r * 0.12, -0.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff70';
+  ctx.fill();
+  // eyes
+  for (const ex of [-12, 12]) {
+    ctx.beginPath(); ctx.arc(ex, -8, 6, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(ex + 2, -7, 3.5, 0, Math.PI * 2); ctx.fillStyle = col.eye; ctx.fill();
+  }
+  // smile
+  ctx.beginPath(); ctx.arc(0, 5, 10, 0.3, Math.PI - 0.3);
+  ctx.strokeStyle = col.eye; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+}
+
+// ════════════════════════════════════════════════════════════════
+// GAMEPLAY
+// ════════════════════════════════════════════════════════════════
+function startLevel(lvl) {
+  state.screen = 'play';
+  state.currentLevel = lvl;
+  state.hearts = 3;
+  state.score = 0;
+  state.problemsSolved = 0;
+  state.combo = 0;
+  const def = LEVELS[Math.min(lvl, MAX_LEVEL)];
+  state.problemsTotal = def.problems;
+  state.levelStartTime = Date.now();
+
+  slimes = []; popParticles = []; floatTexts = [];
+  currentQ = null; numpadValue = '';
+  spawnInterval = def.speed * 1000 / 2; // time between spawns
+  gameRunning = true;
+
+  clearOverlays();
+  document.getElementById('top-bar').style.display = 'flex';
+  document.getElementById('problem-display').style.display = 'block';
+  updateHUD();
+  showLevelBadge(lvl);
+  initStars();
+
+  lastSpawn = performance.now() - spawnInterval;
+  lastTime = performance.now();
+  animId = requestAnimationFrame(loop);
+}
+
+function updateHUD() {
+  document.getElementById('hearts').textContent = '❤️'.repeat(Math.max(0, state.hearts));
+  const def = LEVELS[Math.min(state.currentLevel, MAX_LEVEL)];
+  document.getElementById('level-label').textContent =
+    `Lv${state.currentLevel} · ${def.name} · ${state.problemsSolved}/${state.problemsTotal}`;
+}
+
+function showLevelBadge(lvl) {
+  const badge = document.getElementById('level-badge');
+  document.getElementById('level-badge-val').textContent = lvl;
+  badge.style.display = 'block';
+  levelBadgeTimer = 2;
+}
+
+function spawnSlime() {
+  const def = LEVELS[Math.min(state.currentLevel, MAX_LEVEL)];
+  const q = genQuestion(state.currentLevel);
+  slimes.push(new Slime(q, def.speed));
+  if (slimes.length === 1) showQuestion();
+}
+
+function showQuestion() {
+  if (!slimes.length) return;
+  currentQ = slimes[0].q;
+  const display = document.getElementById('problem-display');
+  display.textContent = currentQ.text;
+  renderInput();
+}
+
+function renderInput() {
+  const bar = document.getElementById('answer-bar');
+  bar.innerHTML = '';
+  if (!currentQ) return;
+
+  if (currentQ.choices) {
+    // Multiple choice
+    currentQ.choices.forEach(v => {
+      const btn = document.createElement('button');
+      btn.className = 'ans-btn';
+      btn.textContent = v;
+      btn.onclick = () => handleAnswer(v, btn);
+      bar.appendChild(btn);
+    });
+  } else {
+    // Numpad
+    numpadValue = '';
+    const pad = document.createElement('div');
+    pad.className = 'numpad';
+    pad.innerHTML = `
+      <div class="numpad-display" id="numpad-display">_</div>
+      <button class="num-btn" data-n="1">1</button>
+      <button class="num-btn" data-n="2">2</button>
+      <button class="num-btn" data-n="3">3</button>
+      <button class="num-btn action-del" data-n="del">⌫</button>
+      <button class="num-btn" data-n="4">4</button>
+      <button class="num-btn" data-n="5">5</button>
+      <button class="num-btn" data-n="6">6</button>
+      <button class="num-btn" data-n="0">0</button>
+      <button class="num-btn" data-n="7">7</button>
+      <button class="num-btn" data-n="8">8</button>
+      <button class="num-btn" data-n="9">9</button>
+      <button class="num-btn action-go" data-n="go">GO ✓</button>
+    `;
+    bar.appendChild(pad);
+    pad.querySelectorAll('.num-btn').forEach(btn => {
+      btn.onclick = () => handleNumpad(btn.dataset.n);
+    });
+  }
+}
+
+function handleNumpad(key) {
+  if (!gameRunning || !currentQ) return;
+  if (key === 'del') {
+    numpadValue = numpadValue.slice(0, -1);
+  } else if (key === 'go') {
+    if (numpadValue === '') return;
+    const val = parseInt(numpadValue);
+    if (val === currentQ.answer) {
+      onCorrect();
+    } else {
+      onWrong();
+    }
+    return;
+  } else {
+    if (numpadValue.length < 4) numpadValue += key;
+  }
+  document.getElementById('numpad-display').textContent = numpadValue || '_';
+}
+
+function handleAnswer(value, btn) {
+  if (!gameRunning || !currentQ) return;
+  if (value === currentQ.answer) {
+    btn.classList.add('correct');
+    onCorrect();
+  } else {
+    btn.classList.add('wrong');
+    onWrong();
+    setTimeout(() => btn.classList.remove('wrong'), 350);
+  }
+}
+
+function onCorrect() {
+  sfxPop();
+  popActiveSlime();
+  state.combo++;
+  state.problemsSolved++;
+  const pts = 10 + (state.combo > 1 ? (state.combo - 1) * 5 : 0) + state.currentLevel * 2;
+  state.score += pts;
+  showFloat(`+${pts}${state.combo > 1 ? ' 🔥x' + state.combo : ''}`, '#7fff00');
+  updateHUD();
+
+  // Check level clear
+  if (state.problemsSolved >= state.problemsTotal) {
+    setTimeout(() => levelComplete(), 400);
+    return;
+  }
+
+  setTimeout(() => { if (gameRunning) showQuestion(); }, 300);
+}
+
+function onWrong() {
+  sfxWrong();
+  state.combo = 0;
+  numpadValue = '';
+  const nd = document.getElementById('numpad-display');
+  if (nd) {
+    nd.textContent = '✗';
+    nd.style.color = '#FF6B6B';
+    setTimeout(() => { nd.textContent = '_'; nd.style.color = '#fff'; }, 400);
+  }
+}
+
+function popActiveSlime() {
+  if (!slimes.length) return;
+  slimes[0].pop();
+}
+
+function checkEscaped() {
+  for (let i = slimes.length - 1; i >= 0; i--) {
+    if (slimes[i].isEscaped()) {
+      slimes[i].alive = false;
+      state.hearts--;
+      state.combo = 0;
+      sfxLoseHeart();
+      showFloat('-1 ❤️', '#FF6B6B');
+      updateHUD();
+      if (state.hearts <= 0) { gameOver(); return; }
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// GAME LOOP
+// ════════════════════════════════════════════════════════════════
+function loop(ts) {
+  if (!gameRunning) return;
+  const dt = Math.min((ts - lastTime) / 1000, 0.1);
+  lastTime = ts;
+
+  // spawn
+  if (ts - lastSpawn > spawnInterval && state.problemsSolved < state.problemsTotal) {
+    // only spawn if fewer active slimes than remaining problems
+    const remaining = state.problemsTotal - state.problemsSolved;
+    const activeCount = slimes.filter(s => !s.popping).length;
+    if (activeCount < Math.min(3, remaining)) {
+      lastSpawn = ts;
+      spawnSlime();
+    }
+  }
+
+  // update
+  slimes.forEach(s => s.update(dt));
+  checkEscaped();
+  slimes = slimes.filter(s => s.alive);
+  if (slimes.length > 0 && (!currentQ || !slimes.find(s => s.q === currentQ && !s.popping))) {
+    showQuestion();
+  }
+
+  updateParticles(dt);
+  updateFloats(dt);
+
+  // level badge
+  if (levelBadgeTimer > 0) {
+    levelBadgeTimer -= dt;
+    if (levelBadgeTimer <= 0) document.getElementById('level-badge').style.display = 'none';
+  }
+
+  // draw
+  drawBg();
+  slimes.forEach(s => s.draw());
+  drawParticles();
+  drawFloats();
+
+  animId = requestAnimationFrame(loop);
+}
+
+// ════════════════════════════════════════════════════════════════
+// LEVEL COMPLETE / GAME OVER
+// ════════════════════════════════════════════════════════════════
+async function levelComplete() {
+  gameRunning = false;
+  if (animId) cancelAnimationFrame(animId);
+  sfxLevelComplete();
+
+  const elapsed = (Date.now() - state.levelStartTime) / 1000;
+
+  // Unlock next level
+  if (state.currentLevel >= state.unlockedLevels && state.currentLevel < MAX_LEVEL) {
+    state.unlockedLevels = state.currentLevel + 1;
+    saveLocal();
+    await saveToFirestore();
+  }
+
+  // Save score
+  if (state.user) {
+    await saveLevelScore(state.currentLevel, state.score, elapsed);
+    await submitLeaderboard(state.currentLevel, state.score, elapsed);
+  }
+
+  state.screen = 'levelComplete';
+  clearOverlays();
+  document.getElementById('answer-bar').innerHTML = '';
+  document.getElementById('problem-display').style.display = 'none';
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  let html = `<h2>Level Clear! 🎉</h2>
+    <p class="big">Score: ${state.score}</p>
+    <p>You solved ${state.problemsSolved} problems in ${Math.round(elapsed)}s!</p>`;
+  if (state.user) html += `<p style="font-size:0.85rem;color:#7fff00">Score submitted to leaderboard!</p>`;
+  if (state.currentLevel < MAX_LEVEL) {
+    html += `<button class="btn btn-green" id="next-level-btn">Next Level →</button>`;
+  } else {
+    html += `<p style="color:#FFD700;font-size:1.3rem">🌟 You finished all levels! 🌟</p>`;
+  }
+  html += `<button class="link-btn" id="back-levels-btn">Back to Levels</button>`;
+  ov.innerHTML = html;
+  document.getElementById('game-area').appendChild(ov);
+
+  const nl = document.getElementById('next-level-btn');
+  if (nl) nl.onclick = () => startLevel(state.currentLevel + 1);
+  document.getElementById('back-levels-btn').onclick = () => showTitleScreen();
+}
+
+function gameOver() {
+  gameRunning = false;
+  if (animId) cancelAnimationFrame(animId);
+  state.screen = 'gameOver';
+  clearOverlays();
+  document.getElementById('answer-bar').innerHTML = '';
+  document.getElementById('problem-display').style.display = 'none';
+
+  // Submit score even on game over
+  if (state.user && state.score > 0) {
+    const elapsed = (Date.now() - state.levelStartTime) / 1000;
+    submitLeaderboard(state.currentLevel, state.score, elapsed);
+  }
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `
+    <h2>Great Try!</h2>
+    <p class="big">Score: ${state.score}</p>
+    <p>You solved ${state.problemsSolved} problems!</p>
+    <button class="btn btn-green" id="retry-btn">Try Again</button>
+    <button class="link-btn" id="back-levels-btn2">Back to Levels</button>
+  `;
+  document.getElementById('game-area').appendChild(ov);
+  document.getElementById('retry-btn').onclick = () => startLevel(state.currentLevel);
+  document.getElementById('back-levels-btn2').onclick = () => showTitleScreen();
+}
+
+// ════════════════════════════════════════════════════════════════
+// LEADERBOARD
+// ════════════════════════════════════════════════════════════════
+let lbTab = 'score';
+let lbLevelFilter = 1;
+
+async function showLeaderboard() {
+  state.screen = 'leaderboard';
+  gameRunning = false;
+  if (animId) cancelAnimationFrame(animId);
+  clearOverlays();
+  document.getElementById('answer-bar').innerHTML = '';
+  document.getElementById('problem-display').style.display = 'none';
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.style.justifyContent = 'flex-start';
+  ov.style.paddingTop = '16px';
+  ov.innerHTML = `
+    <div style="display:flex;width:100%;justify-content:space-between;align-items:center">
+      <h2 style="font-size:1.6rem;margin:0">🏆 Leaderboard</h2>
+      <button class="icon-btn" id="lb-close" style="font-size:1.5rem;color:#fff">✕</button>
+    </div>
+    <div class="lb-tabs">
+      <button class="lb-tab ${lbTab==='score'?'active':''}" data-tab="score">🏆 High Score</button>
+      <button class="lb-tab ${lbTab==='time'?'active':''}" data-tab="time">⚡ Fastest</button>
+      <button class="lb-tab ${lbTab==='levels'?'active':''}" data-tab="levels">🌟 Levels</button>
+    </div>
+    <div id="lb-content" style="width:100%">
+      <p style="color:#888">Loading...</p>
+    </div>
+  `;
+  document.getElementById('game-area').appendChild(ov);
+
+  document.getElementById('lb-close').onclick = () => showTitleScreen();
+  ov.querySelectorAll('.lb-tab').forEach(tab => {
+    tab.onclick = () => {
+      lbTab = tab.dataset.tab;
+      ov.querySelectorAll('.lb-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      loadLeaderboardData();
+    };
+  });
+
+  await loadLeaderboardData();
+}
+
+async function loadLeaderboardData() {
+  const container = document.getElementById('lb-content');
+  if (!container) return;
+  container.innerHTML = '<p style="color:#888">Loading...</p>';
+
+  let html = '';
+
+  try {
+    if (lbTab === 'score') {
+      const snap = await db.collection('leaderboard').orderBy('score', 'desc').limit(20).get();
+      html = renderLbRows(snap.docs, 'score', d => d.score + ' pts');
+    } else if (lbTab === 'time') {
+      html += `<select class="lb-level-select" id="lb-level-sel">`;
+      for (let i = 1; i <= MAX_LEVEL; i++) html += `<option value="${i}" ${i===lbLevelFilter?'selected':''}>Level ${i} – ${LEVELS[i].name}</option>`;
+      html += `</select>`;
+      const snap = await db.collection('leaderboard')
+        .where('level', '==', lbLevelFilter)
+        .orderBy('time', 'asc').limit(20).get();
+      html += renderLbRows(snap.docs, 'time', d => d.time + 's');
+    } else {
+      const snap = await db.collection('users').orderBy('unlockedLevels', 'desc').limit(20).get();
+      html = renderLbRows(snap.docs, 'unlockedLevels', d => 'Level ' + d.unlockedLevels, true);
+    }
+  } catch(e) {
+    html = `<p class="lb-empty">Could not load leaderboard. Are you online?</p>`;
+  }
+
+  if (!html || html.includes('lb-empty')) {
+    if (!html) html = `<p class="lb-empty">No entries yet. Be the first!</p>`;
+  }
+
+  container.innerHTML = html;
+
+  // Level filter listener
+  const sel = document.getElementById('lb-level-sel');
+  if (sel) {
+    sel.onchange = () => {
+      lbLevelFilter = parseInt(sel.value);
+      loadLeaderboardData();
+    };
+  }
+
+  // Guest nudge
+  if (!state.user) {
+    container.innerHTML += `<p style="color:#7fff00;font-size:0.85rem;margin-top:8px">Sign in to see your name here!</p>`;
+  }
+}
+
+function renderLbRows(docs, field, format, isUserDoc = false) {
+  if (!docs.length) return `<p class="lb-empty">No entries yet!</p>`;
+  let html = '<div class="lb-table">';
+  docs.forEach((doc, i) => {
+    const d = doc.data();
+    const isMe = state.user && (isUserDoc ? doc.id === state.user.uid : d.uid === state.user.uid);
+    const medals = ['🥇','🥈','🥉'];
+    const rank = i < 3 ? medals[i] : (i + 1);
+    const name = (d.displayName || 'Slime Hero').split(' ')[0];
+    const avatar = d.photoURL
+      ? `<img class="lb-avatar" src="${d.photoURL}" alt="">`
+      : `<div class="lb-avatar"></div>`;
+    html += `<div class="lb-row ${isMe ? 'me' : ''}">
+      <span class="lb-rank">${rank}</span>
+      ${avatar}
+      <span class="lb-name">${name}</span>
+      <span class="lb-stat">${format(d)}</span>
+    </div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+// ════════════════════════════════════════════════════════════════
+// KEYBOARD SUPPORT
+// ════════════════════════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  if (state.screen !== 'play' || !gameRunning) return;
+  const def = LEVELS[Math.min(state.currentLevel, MAX_LEVEL)];
+  if (def.input === 'numpad') {
+    if (e.key >= '0' && e.key <= '9') handleNumpad(e.key);
+    else if (e.key === 'Backspace') handleNumpad('del');
+    else if (e.key === 'Enter') handleNumpad('go');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════════════════
+function rand(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════
+loadLocal();
+showTitleScreen();
+</script>
+</body>
+</html>
