@@ -358,76 +358,61 @@ const ctx = canvas.getContext('2d');
 const W = canvas.width, H = canvas.height;
 
 // ════════════════════════════════════════════════════════════════
-// LEVEL DEFINITIONS
+// LEVEL DATA (loaded from levels.json)
 // ════════════════════════════════════════════════════════════════
-const LEVELS = [
-  null,
-  { name: 'Baby Steps',         newOp: '+', range: [1,9],  speed: 12, problems: 5,  choices: 3 },
-  { name: 'Take Away',          newOp: '-', range: [1,9],  speed: 12, problems: 8,  choices: 3 },
-  { name: 'Double Digits',      newOp: '+', range: [0,20], speed: 10, problems: 8,  choices: 4 },
-  { name: 'Subtract & Stretch', newOp: '-', range: [0,20], speed: 10, problems: 10, choices: 4 },
-  { name: 'First Times',        newOp: '×', range: [0,5],  speed: 8,  problems: 10, choices: 5 },
-  { name: 'Fair Shares',        newOp: '÷', range: [2,5],  speed: 8,  problems: 10, choices: 5 },
-];
-const MAX_LEVEL = LEVELS.length - 1;
+let LEVEL_DATA = null; // filled by loadLevels()
+let MAX_LEVEL = 18;
 
-function getOpsForLevel(lvl) {
-  const ops = new Set();
-  for (let i = 1; i <= Math.min(lvl, MAX_LEVEL); i++) ops.add(LEVELS[i].newOp);
-  return [...ops];
+async function loadLevels() {
+  const resp = await fetch('levels.json');
+  const data = await resp.json();
+  const pools = data.pools;
+  LEVEL_DATA = data.levels.map(lv => {
+    if (!lv) return null;
+    const merged = [];
+    for (const idx of lv.p) merged.push(...pools[idx]);
+    return { name: lv.name, d: lv.d, problems: lv.n, boss: lv.boss, choices: lv.ch, pool: merged };
+  });
+  MAX_LEVEL = LEVEL_DATA.length - 1;
 }
 
 // ════════════════════════════════════════════════════════════════
-// PROBLEM GENERATOR
+// SCORING (from point_system.md)
 // ════════════════════════════════════════════════════════════════
-function genQuestion(lvl) {
-  const cl = Math.min(lvl, MAX_LEVEL);
-  const def = LEVELS[cl];
-  const allOps = getOpsForLevel(cl);
+function crossingTime(d) { return 21.5 - 1.5 * d; }
 
-  let op;
-  if (allOps.length <= 1 || Math.random() < 0.5) {
-    op = def.newOp;
-  } else {
-    const review = allOps.filter(o => o !== def.newOp);
-    op = review[Math.floor(Math.random() * review.length)];
-  }
+function calcScore(d, answerTimeSec) {
+  const Bd = 10 + 2 * d;
+  const tMax = crossingTime(d);
+  const h = Math.max(0, 1 - answerTimeSec / tMax);
+  return Math.round(Bd * (1 + 2 * h));
+}
 
-  let a, b, answer;
-  if (op === '+') {
-    const hi = cl <= 2 ? 9 : 20;
-    a = rand(1, hi); b = rand(1, hi); answer = a + b;
-  } else if (op === '-') {
-    const hi = cl <= 2 ? 9 : 20;
-    a = rand(1, hi); b = rand(0, a); answer = a - b;
-  } else if (op === '×') {
-    a = rand(0, 5); b = rand(0, 5); answer = a * b;
-  } else {
-    b = rand(2, 5);
-    const result = rand(1, 10);
-    a = b * result; answer = result;
-  }
-
-  return { text: `${a} ${op} ${b}`, answer, numChoices: def.choices };
+// ════════════════════════════════════════════════════════════════
+// QUESTION SELECTION (from pre-generated pool)
+// ════════════════════════════════════════════════════════════════
+function pickQuestion(lvl) {
+  const def = LEVEL_DATA[Math.min(lvl, MAX_LEVEL)];
+  const q = def.pool[Math.floor(Math.random() * def.pool.length)];
+  return { text: q.t, answer: q.a, numChoices: def.choices };
 }
 
 function buildChoices(correct, count) {
   const set = new Set([correct]);
   // ±1
-  const d1 = correct + (Math.random() < 0.5 ? 1 : -1);
-  if (d1 >= 0) set.add(d1); else set.add(correct + 1);
+  set.add(correct + (Math.random() < 0.5 ? 1 : -1));
   // ±2..3
   let tries = 0;
   while (set.size < Math.min(3, count) && tries < 30) {
     const d = correct + rand(-3, 3);
-    if (d >= 0 && d !== correct) set.add(d);
+    if (d !== correct) set.add(d);
     tries++;
   }
   // ±4..6 for larger sets
   tries = 0;
   while (set.size < count && tries < 40) {
     const d = correct + rand(-6, 6);
-    if (d >= 0 && d !== correct) set.add(d);
+    if (d !== correct) set.add(d);
     tries++;
   }
   // fallback
@@ -439,11 +424,11 @@ function buildChoices(correct, count) {
 // ════════════════════════════════════════════════════════════════
 // GAME STATE
 // ════════════════════════════════════════════════════════════════
-let score, lives, level, slimes, currentQ, gameRunning, animId;
+let score, hearts, level, slimes, currentQ, gameRunning, animId;
 let lastSpawn, spawnInterval, slimeSpeed;
 let combo = 0, problemsSolved = 0, problemsTotal = 0;
 let popParticles = [], floatTexts = [];
-let levelStartTime = 0;
+let levelStartTime = 0, questionStartTime = 0;
 let answering = false; // ← ANSWER LOCK — prevents rapid-tap exploit
 
 let currentUser = null;
@@ -717,9 +702,19 @@ function drawBg() {
 // ════════════════════════════════════════════════════════════════
 // UI
 // ════════════════════════════════════════════════════════════════
+function heartsDisplay(h) {
+  let s = '';
+  for (let i = 0; i < 3; i++) {
+    if (h >= i + 1) s += '❤️';
+    else if (h > i) s += '💔';
+    else s += '🖤';
+  }
+  return s;
+}
+
 function updateHUD() {
   document.getElementById('score-val').textContent = score;
-  document.getElementById('lives-val').textContent = '❤️'.repeat(Math.max(0, lives));
+  document.getElementById('lives-val').textContent = heartsDisplay(hearts);
   document.getElementById('level-val').textContent = level;
   document.getElementById('level-badge-val').textContent = level;
 }
@@ -761,9 +756,21 @@ function handleAnswer(value, btn) {
     popActiveSlime();
     combo++;
     problemsSolved++;
-    const pts = 10 + (combo > 1 ? (combo - 1) * 5 : 0) + level * 2;
+
+    // Score per point_system.md: S_q = B_d * (1 + 2 * h(t))
+    const def = LEVEL_DATA[Math.min(level, MAX_LEVEL)];
+    const answerTime = (performance.now() - questionStartTime) / 1000;
+    const pts = calcScore(def.d, answerTime);
     score += pts;
     showFloatText(`+${pts}${combo > 1 ? ' 🔥x'+combo : ''}`, '#7fff00');
+
+    // Hot streak: bonus every 5 consecutive correct
+    if (combo > 0 && combo % 5 === 0) {
+      const streakBonus = 10 + 2 * def.d;
+      score += streakBonus;
+      showFloatText(`🔥 Streak! +${streakBonus}`, '#FFD700');
+    }
+
     updateHUD();
 
     if (problemsSolved >= problemsTotal) {
@@ -775,6 +782,9 @@ function handleAnswer(value, btn) {
     btn.classList.add('wrong');
     sfxWrong();
     combo = 0;
+    hearts -= 0.5; // wrong answer = -½ heart
+    updateHUD();
+    if (hearts <= 0) { setTimeout(() => endGame(), 350); return; }
     setTimeout(() => { btn.classList.remove('wrong'); unlockAllButtons(); }, 350);
   }
 }
@@ -784,6 +794,7 @@ function nextQuestion() {
   const active = slimes.find(s => !s.popping);
   if (!active) return;
   currentQ = active.q;
+  questionStartTime = performance.now();
   const choices = buildChoices(currentQ.answer, currentQ.numChoices);
   renderAnswers(choices);
   answering = false;
@@ -798,17 +809,17 @@ function checkEscaped() {
   for (let i = slimes.length - 1; i >= 0; i--) {
     if (slimes[i].isEscaped() && !slimes[i].popping) {
       slimes[i].alive = false;
-      lives--; combo = 0;
+      hearts -= 1; combo = 0; // missed slime = -1 heart
       sfxLoseHeart();
       showFloatText('-1 ❤️', '#e74c3c');
       updateHUD();
-      if (lives <= 0) { endGame(); return; }
+      if (hearts <= 0) { endGame(); return; }
     }
   }
 }
 
 function spawnSlime() {
-  const q = genQuestion(level);
+  const q = pickQuestion(level);
   slimes.push(new Slime(q));
   if (!currentQ || !slimes.find(s => s.q === currentQ && !s.popping)) nextQuestion();
 }
@@ -831,7 +842,8 @@ function loop(ts) {
 
   const remaining = problemsTotal - problemsSolved;
   const activeCount = slimes.filter(s => !s.popping).length;
-  if (ts - lastSpawn > spawnInterval && activeCount < Math.min(3, remaining) && remaining > 0) {
+  const maxSlimes = Math.max(2, Math.floor(H / 200));
+  if (ts - lastSpawn > spawnInterval && activeCount < Math.min(maxSlimes, remaining) && remaining > 0) {
     lastSpawn = ts;
     spawnSlime();
   }
@@ -881,7 +893,9 @@ function showTitleScreen() {
     const unlocked = i <= unlockedLevels;
     const isCurrent = i === unlockedLevels;
     const cls = unlocked ? ('unlocked' + (isCurrent ? ' current' : '')) : 'locked';
-    html += `<div class="level-circle ${cls}" data-level="${i}">${i}</div>`;
+    const tip = LEVEL_DATA[i] ? LEVEL_DATA[i].name : '';
+    const bossIcon = LEVEL_DATA[i] && LEVEL_DATA[i].boss === 'mega' ? '👑' : LEVEL_DATA[i] && LEVEL_DATA[i].boss === 'mini' ? '⭐' : '';
+    html += `<div class="level-circle ${cls}" data-level="${i}" title="${tip}">${bossIcon || i}</div>`;
   }
   html += `</div>`;
 
@@ -906,15 +920,17 @@ function showTitleScreen() {
 }
 
 function startGame(lvl) {
-  level = lvl; score = 0; lives = 3; combo = 0;
+  level = lvl; score = 0; hearts = 3; combo = 0;
   problemsSolved = 0; answering = false;
-  const def = LEVELS[Math.min(lvl, MAX_LEVEL)];
+  const def = LEVEL_DATA[Math.min(lvl, MAX_LEVEL)];
   problemsTotal = def.problems;
   levelStartTime = Date.now();
 
+  // Speed from info.ipynb: crossing_time = 21.5 - 1.5*d
+  const ct = crossingTime(def.d);
   slimes = []; popParticles = []; floatTexts = [];
-  slimeSpeed = (H / def.speed) / 60;
-  spawnInterval = def.speed * 400;
+  slimeSpeed = (H / ct) / 60;
+  spawnInterval = ct * 400 * (520 / H);
   lastSpawn = performance.now() - spawnInterval;
   currentQ = null; gameRunning = true;
 
@@ -932,6 +948,11 @@ async function levelComplete() {
   sfxLevelUp();
   const elapsed = (Date.now() - levelStartTime) / 1000;
 
+  // Boss round bonus (point_system.md)
+  const def = LEVEL_DATA[Math.min(level, MAX_LEVEL)];
+  if (def.boss === 'mini') score += 50;
+  else if (def.boss === 'mega') score += 100;
+
   if (level >= unlockedLevels && level < MAX_LEVEL) {
     unlockedLevels = level + 1;
     saveLocal();
@@ -947,9 +968,11 @@ async function levelComplete() {
 
   const ov = document.createElement('div');
   ov.className = 'overlay';
-  let html = `<h2>Level Clear! 🎉</h2>
+  const bossLabel = def.boss === 'mega' ? 'Mega-Boss' : def.boss === 'mini' ? 'Mini-Boss' : '';
+  let html = `<h2>${bossLabel ? bossLabel + ' ' : ''}Level Clear! 🎉</h2>
     <p class="big">Score: ${score}</p>
     <p>You solved ${problemsSolved} problems in ${Math.round(elapsed)}s!</p>`;
+  if (def.boss) html += `<p style="font-size:0.9rem;color:#FFD700">Boss bonus: +${def.boss === 'mega' ? 100 : 50}!</p>`;
   if (currentUser) html += `<p style="font-size:0.85rem;color:#7fff00">Score submitted!</p>`;
   if (level < MAX_LEVEL) html += `<button class="btn btn-green" id="next-btn">Next Level →</button>`;
   else html += `<p style="color:#FFD700;font-size:1.3rem">🌟 You finished all levels! 🌟</p>`;
@@ -966,7 +989,8 @@ function endGame() {
   gameRunning = false;
   if (animId) cancelAnimationFrame(animId);
   if (currentUser && score > 0) {
-    submitLeaderboard(level, score, (Date.now() - levelStartTime) / 1000);
+    const elapsed = (Date.now() - levelStartTime) / 1000;
+    submitLeaderboard(level, score, elapsed);
   }
   clearOverlays();
   document.getElementById('answer-bar').innerHTML = '';
@@ -1035,7 +1059,7 @@ async function loadLB() {
       html = renderRows(snap.docs, d => d.score + ' pts');
     } else if (lbTab === 'time') {
       html = `<select class="lb-level-select" id="lb-lvl-sel">`;
-      for (let i = 1; i <= MAX_LEVEL; i++) html += `<option value="${i}" ${i===lbLevelFilter?'selected':''}>Lv${i} – ${LEVELS[i].name}</option>`;
+      for (let i = 1; i <= MAX_LEVEL; i++) html += `<option value="${i}" ${i===lbLevelFilter?'selected':''}>Lv${i} – ${LEVEL_DATA[i].name}</option>`;
       html += `</select>`;
       const snap = await db.collection('leaderboard').where('level','==',lbLevelFilter).orderBy('time','asc').limit(20).get();
       html += renderRows(snap.docs, d => d.time + 's');
@@ -1080,9 +1104,20 @@ function shuffle(arr) {
   return arr;
 }
 
-loadLocal();
-drawBg();
-showTitleScreen();
+// Init: load level data, then start
+(async () => {
+  try {
+    await loadLevels();
+  } catch(e) {
+    console.error('Failed to load levels.json', e);
+    document.getElementById('game-area').innerHTML =
+      '<div class="overlay"><h2>Loading Error</h2><p>Could not load level data. Please refresh.</p></div>';
+    return;
+  }
+  loadLocal();
+  drawBg();
+  showTitleScreen();
+})();
 </script>
 </body>
 </html>
