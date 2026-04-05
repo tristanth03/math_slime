@@ -1,4 +1,4 @@
-# 🧫 MathSlime
+# 🧫 MathSlime [TO BE UPDATED]
 
 A lightweight, ad-free math game for kids ages 4–10. Solve arithmetic problems to pop falling slime blobs before they reach the bottom. Single HTML file, no frameworks, no build step.
 
