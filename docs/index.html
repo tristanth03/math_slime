@@ -1070,13 +1070,28 @@ async function loadLB() {
         .slice(0, 20);
       html += renderRows(filtered, d => d.time + 's');
     } else {
-      // Pull users and sort client-side; tolerate missing field.
-      const snap = await db.collection('users').limit(200).get();
-      const filtered = snap.docs
-        .filter(d => typeof d.data().unlockedLevels === 'number')
-        .sort((a, b) => b.data().unlockedLevels - a.data().unlockedLevels)
-        .slice(0, 20);
-      html = renderRows(filtered, d => 'Lv ' + d.unlockedLevels, true);
+      // Derive "highest level cleared" per user from the leaderboard collection.
+      // Avoids listing the `users` collection (typically blocked by security rules).
+      const snap = await db.collection('leaderboard').limit(1000).get();
+      const bestByUser = new Map();
+      snap.docs.forEach(doc => {
+        const d = doc.data();
+        if (!d.uid || typeof d.level !== 'number') return;
+        const prev = bestByUser.get(d.uid);
+        if (!prev || d.level > prev.level) {
+          bestByUser.set(d.uid, {
+            uid: d.uid,
+            displayName: d.displayName,
+            photoURL: d.photoURL,
+            level: d.level,
+          });
+        }
+      });
+      const fakeDocs = [...bestByUser.values()]
+        .sort((a, b) => b.level - a.level)
+        .slice(0, 20)
+        .map(v => ({ id: v.uid, data: () => ({ ...v, unlockedLevels: v.level }) }));
+      html = renderRows(fakeDocs, d => 'Lv ' + d.unlockedLevels, true);
     }
   } catch(e) {
     console.error('Leaderboard load failed:', e);
