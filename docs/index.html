@@ -1061,13 +1061,27 @@ async function loadLB() {
       html = `<select class="lb-level-select" id="lb-lvl-sel">`;
       for (let i = 1; i <= MAX_LEVEL; i++) html += `<option value="${i}" ${i===lbLevelFilter?'selected':''}>Lv${i} – ${LEVEL_DATA[i].name}</option>`;
       html += `</select>`;
-      const snap = await db.collection('leaderboard').where('level','==',lbLevelFilter).orderBy('time','asc').limit(20).get();
-      html += renderRows(snap.docs, d => d.time + 's');
+      // Client-side filter+sort to avoid composite index requirement.
+      // Pull a generous batch, filter to selected level, sort by time, take top 20.
+      const snap = await db.collection('leaderboard').limit(500).get();
+      const filtered = snap.docs
+        .filter(d => d.data().level === lbLevelFilter && typeof d.data().time === 'number')
+        .sort((a, b) => a.data().time - b.data().time)
+        .slice(0, 20);
+      html += renderRows(filtered, d => d.time + 's');
     } else {
-      const snap = await db.collection('users').orderBy('unlockedLevels','desc').limit(20).get();
-      html = renderRows(snap.docs, d => 'Lv ' + d.unlockedLevels, true);
+      // Pull users and sort client-side; tolerate missing field.
+      const snap = await db.collection('users').limit(200).get();
+      const filtered = snap.docs
+        .filter(d => typeof d.data().unlockedLevels === 'number')
+        .sort((a, b) => b.data().unlockedLevels - a.data().unlockedLevels)
+        .slice(0, 20);
+      html = renderRows(filtered, d => 'Lv ' + d.unlockedLevels, true);
     }
-  } catch(e) { html = `<p class="lb-empty">Could not load. Are you online?</p>`; }
+  } catch(e) {
+    console.error('Leaderboard load failed:', e);
+    html = `<p class="lb-empty">Could not load. Are you online?</p>`;
+  }
   if (!html) html = `<p class="lb-empty">No entries yet!</p>`;
   c.innerHTML = html;
   if (!currentUser) c.innerHTML += `<p style="color:#7fff00;font-size:0.8rem;margin-top:8px">Sign in to appear here!</p>`;
